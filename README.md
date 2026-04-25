@@ -22,7 +22,11 @@ This publishes a self-contained Windows build to:
 
 [dist/win-x64](C:\code\repos\codex_remote\dist\win-x64)
 
-The main executable will be:
+It also copies the main executable to the repo root:
+
+[CodexRemote.exe](C:\code\repos\codex_remote\CodexRemote.exe)
+
+The full publish folder remains available at:
 
 [dist/win-x64/CodexRemote.exe](C:\code\repos\codex_remote\dist\win-x64\CodexRemote.exe)
 
@@ -49,7 +53,7 @@ dotnet run -- listen --port 45821
 If the remote machine does not have the .NET SDK, run the published executable instead:
 
 ```powershell
-.\dist\win-x64\CodexRemote.exe listen --port 45821
+.\CodexRemote.exe listen --port 45821
 ```
 
 Approve the session from the client machine:
@@ -73,9 +77,9 @@ dotnet run -- shell --host 192.168.1.10
 Using the published executable:
 
 ```powershell
-.\dist\win-x64\CodexRemote.exe connect --host 192.168.1.10 --name codex
-.\dist\win-x64\CodexRemote.exe run --host 192.168.1.10 --command "hostname"
-.\dist\win-x64\CodexRemote.exe shell --host 192.168.1.10
+.\CodexRemote.exe connect --host 192.168.1.10 --name codex
+.\CodexRemote.exe run --host 192.168.1.10 --command "hostname"
+.\CodexRemote.exe shell --host 192.168.1.10
 ```
 
 List stored sessions:

@@ -12,6 +12,8 @@ $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $publishRoot = Join-Path $projectRoot "dist"
+$rootExePath = Join-Path $projectRoot "CodexRemote.exe"
+$rootPdbPath = Join-Path $projectRoot "CodexRemote.pdb"
 
 New-Item -ItemType Directory -Force -Path $publishRoot | Out-Null
 
@@ -32,6 +34,15 @@ foreach ($rid in $Runtime) {
         throw "dotnet publish failed for runtime $rid."
     }
 
+    if ($Runtime.Count -eq 1 -and $rid -eq "win-x64") {
+        Copy-Item (Join-Path $outputDir "CodexRemote.exe") $rootExePath -Force
+
+        $pdbSource = Join-Path $outputDir "CodexRemote.pdb"
+        if (Test-Path $pdbSource) {
+            Copy-Item $pdbSource $rootPdbPath -Force
+        }
+    }
+
     if ($Zip) {
         $zipPath = Join-Path $publishRoot ("codex_remote-" + $rid + ".zip")
         if (Test-Path $zipPath) {
@@ -46,4 +57,9 @@ Write-Host ""
 Write-Host "Published builds:"
 foreach ($rid in $Runtime) {
     Write-Host (" - " + (Join-Path $publishRoot $rid))
+}
+
+if ($Runtime.Count -eq 1 -and $Runtime[0] -eq "win-x64") {
+    Write-Host ""
+    Write-Host ("Repo root executable: " + $rootExePath)
 }
