@@ -1,7 +1,6 @@
 bin/
 obj/
 dist/
-CodexRemote.exe
 CodexRemote.pdb
 .vs/
 *.user
