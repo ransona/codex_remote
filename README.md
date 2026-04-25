@@ -10,12 +10,46 @@ The remote machine runs a foreground listener. When a client asks to connect, th
 dotnet build
 ```
 
+## Publish For Normal Windows Machines
+
+To produce a standalone `.exe` that does not require .NET to be installed on the target machine:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\publish.ps1
+```
+
+This publishes a self-contained Windows build to:
+
+[dist/win-x64](C:\code\repos\codex_remote\dist\win-x64)
+
+The main executable will be:
+
+[dist/win-x64/CodexRemote.exe](C:\code\repos\codex_remote\dist\win-x64\CodexRemote.exe)
+
+To also build an ARM64 package:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\publish.ps1 -Runtime win-x64,win-arm64
+```
+
+To build zip archives too:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\publish.ps1 -Zip
+```
+
 ## Run
 
 Start the listener on the remote machine:
 
 ```powershell
 dotnet run -- listen --port 45821
+```
+
+If the remote machine does not have the .NET SDK, run the published executable instead:
+
+```powershell
+.\dist\win-x64\CodexRemote.exe listen --port 45821
 ```
 
 Approve the session from the client machine:
@@ -34,6 +68,14 @@ Open an interactive session:
 
 ```powershell
 dotnet run -- shell --host 192.168.1.10
+```
+
+Using the published executable:
+
+```powershell
+.\dist\win-x64\CodexRemote.exe connect --host 192.168.1.10 --name codex
+.\dist\win-x64\CodexRemote.exe run --host 192.168.1.10 --command "hostname"
+.\dist\win-x64\CodexRemote.exe shell --host 192.168.1.10
 ```
 
 List stored sessions:
