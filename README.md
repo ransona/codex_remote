@@ -44,13 +44,31 @@ powershell -ExecutionPolicy Bypass -File .\scripts\publish.ps1 -Zip
 
 ## Run
 
+With no arguments, the app defaults to:
+
+```powershell
+listen --port 45821
+```
+
 Start the listener on the remote machine:
+
+```powershell
+dotnet run
+```
+
+or explicitly:
 
 ```powershell
 dotnet run -- listen --port 45821
 ```
 
 If the remote machine does not have the .NET SDK, run the published executable instead:
+
+```powershell
+.\CodexRemote.exe
+```
+
+or explicitly:
 
 ```powershell
 .\CodexRemote.exe listen --port 45821

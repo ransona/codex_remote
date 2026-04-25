@@ -29,7 +29,12 @@ static class App
 
     public static async Task<int> RunAsync(string[] args)
     {
-        if (args.Length == 0 || HasHelp(args))
+        if (args.Length == 0)
+        {
+            return await RunListenAsync([]);
+        }
+
+        if (HasHelp(args))
         {
             PrintHelp();
             return 0;
@@ -83,6 +88,7 @@ static class App
               sessions List or remove stored sessions.
 
             Examples:
+              CodexRemote
               CodexRemote listen --port 45821
               CodexRemote connect --host 192.168.1.10 --name codex
               CodexRemote run --host 192.168.1.10 --command "hostname"
