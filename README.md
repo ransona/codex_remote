@@ -120,6 +120,10 @@ dotnet run -- sessions remove --host 192.168.1.10
 - `shell`: repeatedly execute commands against the same approved remote host.
 - `sessions`: inspect or remove locally stored sessions.
 
+## Trace Output
+
+The app now emits trace lines to stderr for incoming and outgoing protocol traffic and for command execution lifecycle events. That includes `hello`, `hello_response`, `command_request`, `stream_chunk`, `ack`, `command_complete`, approvals, and local command start/finish notifications.
+
 ## Protocol
 
 The protocol name is `codex_remote`.

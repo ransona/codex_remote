@@ -101,6 +101,7 @@ static class App
         var bind = GetOption(args, "--bind") ?? "0.0.0.0";
         var port = GetIntOption(args, "--port", Constants.DefaultPort);
         var listener = new Listener(bind, port);
+        Logger.Info($"Starting listener on udp://{bind}:{port}.");
         Console.WriteLine($"Listening on udp://{bind}:{port} using protocol '{Constants.ProtocolName}'.");
         Console.WriteLine("Press Ctrl+C to stop.");
         await listener.RunAsync();
@@ -124,6 +125,8 @@ static class App
             OperatorName = operatorName,
             Host = Dns.GetHostName()
         };
+
+        Logger.Info($"Connecting to {host}:{port} as '{operatorName}'.");
 
         var response = await Protocol.SendRequestAsync<Packet>(
             client,
@@ -150,6 +153,7 @@ static class App
         store.Upsert(session);
         await store.SaveAsync();
 
+        Logger.Info($"Session approved for {host}:{port}. sessionId={session.SessionId}");
         Console.WriteLine($"Session approved for {host}:{port}.");
         Console.WriteLine($"Session id: {session.SessionId}");
         return 0;
@@ -169,6 +173,7 @@ static class App
         var cwd = GetOption(args, "--cwd");
         var timeoutMs = GetIntOption(args, "--timeout-ms", Constants.DefaultTimeoutMs);
 
+        Logger.Info($"Requesting remote command on {host}:{port}. shell={shell} cwd={cwd ?? "<default>"} timeoutMs={timeoutMs} command={command}");
         var exitCode = await RemoteExecutor.ExecuteAsync(host, port, shell, command, cwd, timeoutMs);
         Console.Error.WriteLine($"[remote exit code: {exitCode}]");
         return exitCode;
@@ -182,6 +187,7 @@ static class App
         var cwd = GetOption(args, "--cwd");
         var timeoutMs = GetIntOption(args, "--timeout-ms", Constants.DefaultTimeoutMs);
 
+        Logger.Info($"Opening interactive remote shell to {host}:{port}. shell={shell} cwd={cwd ?? "<default>"} timeoutMs={timeoutMs}");
         Console.WriteLine($"Interactive remote shell on {host}:{port} using {shell}. Type 'exit' to quit.");
         while (true)
         {
@@ -338,6 +344,7 @@ sealed class Listener
         while (true)
         {
             var received = await _udpClient.ReceiveAsync();
+            Logger.PacketIn(received.RemoteEndPoint, Protocol.TryDeserialize(received.Buffer), received.Buffer.Length);
             _ = Task.Run(() => HandleAsync(received));
         }
     }
@@ -375,6 +382,7 @@ sealed class Listener
         await _promptGate.WaitAsync();
         try
         {
+            Logger.Info($"Prompting for approval from {remoteEndPoint.Address}:{remoteEndPoint.Port} operator={hello.OperatorName ?? "unknown"} hostHint={hello.Host ?? "unknown"}");
             Console.WriteLine();
             Console.WriteLine($"Remote control request from {remoteEndPoint.Address}:{remoteEndPoint.Port}");
             Console.WriteLine($"Operator: {hello.OperatorName ?? "unknown"}");
@@ -398,6 +406,11 @@ sealed class Listener
                 _sessions[session.SessionId] = session;
                 response.SessionId = session.SessionId;
                 response.SessionToken = session.SessionToken;
+                Logger.Info($"Approved session {session.SessionId} for {remoteEndPoint.Address}.");
+            }
+            else
+            {
+                Logger.Info($"Rejected remote control request from {remoteEndPoint.Address}:{remoteEndPoint.Port}.");
             }
 
             await Protocol.SendPacketAsync(_udpClient, remoteEndPoint, response);
@@ -424,6 +437,7 @@ sealed class Listener
             return;
         }
 
+        Logger.Info($"Executing inbound remote command for session {session.SessionId} from {remoteEndPoint.Address}. shell={commandPacket.Shell ?? "powershell"} cwd={commandPacket.WorkingDirectory ?? "<default>"} timeoutMs={commandPacket.TimeoutMs.GetValueOrDefault(Constants.DefaultTimeoutMs)} command={commandPacket.Command ?? string.Empty}");
         var processResult = await CommandRunner.RunStreamingAsync(
             commandPacket.Command ?? string.Empty,
             commandPacket.Shell ?? "powershell",
@@ -452,6 +466,7 @@ sealed class Listener
             Message = processResult.TimedOut ? "Command timed out." : null
         };
         await Protocol.SendWithAckAsync(_udpClient, remoteEndPoint, completionPacket, commandPacket.RequestId!, -1);
+        Logger.Info($"Completed inbound remote command for session {session.SessionId}. exitCode={processResult.ExitCode} timedOut={processResult.TimedOut}");
     }
 }
 
@@ -548,6 +563,7 @@ static class CommandRunner
     {
         var startInfo = BuildStartInfo(command, shell, cwd);
         using var process = new Process { StartInfo = startInfo };
+        Logger.Info($"Launching local command. shell={shell} cwd={startInfo.WorkingDirectory} timeoutMs={timeoutMs} command={command}");
         process.Start();
 
         var stdoutTask = PumpStreamAsync(process.StandardOutput, "stdout", onOutputAsync);
@@ -569,10 +585,12 @@ static class CommandRunner
             }
 
             await onOutputAsync(new StreamItem("stderr", $"{Environment.NewLine}Command timed out after {timeoutMs} ms.{Environment.NewLine}"));
+            Logger.Info($"Local command timed out after {timeoutMs} ms.");
             return new CommandExecution { ExitCode = -1, TimedOut = true };
         }
 
         await Task.WhenAll(stdoutTask, stderrTask);
+        Logger.Info($"Local command exited with code {process.ExitCode}.");
         return new CommandExecution { ExitCode = process.ExitCode };
     }
 
@@ -630,6 +648,7 @@ static class Protocol
     {
         var bytes = Serialize(packet);
         await client.SendAsync(bytes, bytes.Length, endpoint);
+        Logger.PacketOut(endpoint, packet, bytes.Length);
     }
 
     public static async Task<TPacket> SendRequestAsync<TPacket>(UdpClient client, IPEndPoint endpoint, Packet packet, string expectedType, int timeoutMs)
@@ -655,7 +674,9 @@ static class Protocol
         try
         {
             var received = await client.ReceiveAsync();
-            return Deserialize(received.Buffer) ?? throw new InvalidOperationException("Received invalid packet.");
+            var packet = TryDeserialize(received.Buffer);
+            Logger.PacketIn(received.RemoteEndPoint, packet, received.Buffer.Length);
+            return packet ?? throw new InvalidOperationException("Received invalid packet.");
         }
         catch (ObjectDisposedException) when (cancellationToken.IsCancellationRequested)
         {
@@ -693,6 +714,18 @@ static class Protocol
     public static byte[] Serialize(Packet packet) => JsonSerializer.SerializeToUtf8Bytes(packet);
 
     public static Packet? Deserialize(byte[] buffer) => JsonSerializer.Deserialize<Packet>(buffer);
+
+    public static Packet? TryDeserialize(byte[] buffer)
+    {
+        try
+        {
+            return Deserialize(buffer);
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
     public static IEnumerable<byte[]> Chunk(byte[] payload, int chunkSize)
     {
@@ -843,3 +876,74 @@ class Packet
 }
 
 readonly record struct StreamItem(string Stream, string Text);
+
+static class Logger
+{
+    public static void Info(string message) =>
+        Console.Error.WriteLine($"{DateTimeOffset.Now:O} [trace] {message}");
+
+    public static void PacketOut(IPEndPoint endpoint, Packet packet, int sizeBytes) =>
+        Info($"OUT {endpoint.Address}:{endpoint.Port} {DescribePacket(packet)} bytes={sizeBytes}");
+
+    public static void PacketIn(IPEndPoint endpoint, Packet? packet, int sizeBytes)
+    {
+        if (packet is null)
+        {
+            Info($"IN  {endpoint.Address}:{endpoint.Port} <invalid-packet> bytes={sizeBytes}");
+            return;
+        }
+
+        Info($"IN  {endpoint.Address}:{endpoint.Port} {DescribePacket(packet)} bytes={sizeBytes}");
+    }
+
+    private static string DescribePacket(Packet packet)
+    {
+        var parts = new List<string>
+        {
+            $"type={packet.Type}",
+            $"requestId={packet.RequestId ?? "-"}"
+        };
+
+        if (!string.IsNullOrWhiteSpace(packet.SessionId))
+        {
+            parts.Add($"sessionId={packet.SessionId}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(packet.OperatorName))
+        {
+            parts.Add($"operator={packet.OperatorName}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(packet.Shell))
+        {
+            parts.Add($"shell={packet.Shell}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(packet.Command))
+        {
+            parts.Add($"command={packet.Command}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(packet.Stream))
+        {
+            parts.Add($"stream={packet.Stream}");
+        }
+
+        if (packet.ExitCode is not null)
+        {
+            parts.Add($"exitCode={packet.ExitCode}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(packet.AckKey))
+        {
+            parts.Add($"ackKey={packet.AckKey}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(packet.Message))
+        {
+            parts.Add($"message={packet.Message}");
+        }
+
+        return string.Join(" ", parts);
+    }
+}
